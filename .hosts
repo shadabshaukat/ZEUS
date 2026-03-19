@@ -1,0 +1,4 @@
+# Example .hosts file
+# Add any source and target host definitions here in the format of <ip>:<hostname>
+# eg.
+# 10.113.10.x:sourcedb.company.com

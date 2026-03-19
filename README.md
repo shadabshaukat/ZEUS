@@ -61,6 +61,8 @@ This repository uses a simple operator-first layout:
 │   ├── ZEUS_API_Reference.md
 │   └── ZEUS_Deployment_Guide.md
 └── zdm-microservices/
+    ├── .env	                   # ZDM environment variables for Docker image. Modify as required
+    ├── .hosts	                   # Host name resolution for source/target database servers. Modify as required
     ├── backend_auth.py            # loads ZEUS API Basic Auth users from runtime auth file
     ├── main.py                    # FastAPI backend entrypoint
     ├── requirements.txt
@@ -75,16 +77,18 @@ This repository uses a simple operator-first layout:
 
 This repository is documented for a **container deployment path with a local ZDM kit**.
 
+Note: Ensure `podman` is installed and executable by the user 
+
 ### 1) Download the ZDM installation file
 
 Download the ZDM installation archive from the official source and store it locally. Make note of the file path because it is used in the next step.
 
 ### 2) Set your local ZDM kit zip path
 
-Before running `build.sh`, set `ZDM_KIT_PATH` to your local ZDM kit zip file.
+Before running `build.sh`, set `ZDM_KIT_PATH` to the downloaded ZDM installation file from Step 1.
 
 ```bash
-export ZDM_KIT_PATH=/path/to/zdm.zip
+export ZDM_KIT_PATH=/path/to/<zdm_install_file>.zip
 ```
 
 ### 3) Build the image
