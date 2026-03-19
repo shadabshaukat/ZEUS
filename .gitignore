@@ -1,6 +1,6 @@
 # OCI / host / local kit
 .oci/
-.hosts
+# .hosts
 .local_zdm/
 zdm.zip
 
