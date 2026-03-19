@@ -93,6 +93,8 @@ export ZDM_KIT_PATH=/path/to/<zdm_install_file>.zip
 
 ### 3) Build the image
 
+Verify the values in .env and .hosts file and modify if required. When ready, execute the build script.
+
 ```bash
 ./build.sh
 ```
