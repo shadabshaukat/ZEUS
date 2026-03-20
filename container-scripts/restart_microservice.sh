@@ -34,6 +34,7 @@ DEBUGLOG="${DEBUGLOG:-$ZEUS_LOG/debug.log}"
 PIDFILE="${PIDFILE:-$ZEUS_LOG/microservice.pid}"
 
 PYTHON_BIN="${PYTHON_BIN:-python3.11}"
+PY_CMD_BASENAME="$(basename "$PYTHON_BIN")"
 
 export ZEUS_BASE ZEUS_HOST ZEUS_PORT ZEUS_SSL_CERTFILE ZEUS_SSL_KEYFILE ZEUS_AUTH_FILE
 
@@ -70,17 +71,25 @@ if [[ ! -f "$MAIN_PY" ]]; then
 fi
 
 log "Stopping existing microservice (if any)..."
-pids="$(pgrep -f "python3\.11 .*zdm-microservices/main\.py" || true)"
-if [[ -n "$pids" ]]; then
-  log "Found PIDs: $pids"
-  kill $pids || true
+if [[ -f "$PIDFILE" ]] && pid=$(cat "$PIDFILE" 2>/dev/null) && kill -0 "$pid" 2>/dev/null; then
+  log "Stopping pid from pidfile: $pid"
+  kill "$pid" || true
   sleep 1
-  still="$(pgrep -f "python3\.11 .*zdm-microservices/main\.py" || true)"
+fi
+
+pattern_pids="$(pgrep -f "${PY_CMD_BASENAME} .*zdm-microservices/main\.py" || true)"
+if [[ -n "$pattern_pids" ]]; then
+  log "Killing matching pids: $pattern_pids"
+  kill $pattern_pids || true
+  sleep 1
+  still="$(pgrep -f "${PY_CMD_BASENAME} .*zdm-microservices/main\.py" || true)"
   if [[ -n "$still" ]]; then
     log "Still running, force killing: $still"
     kill -9 $still || true
   fi
-else
+fi
+
+if [[ -z "$pattern_pids" && ! ( -f "$PIDFILE" && kill -0 "${pid:-0}" 2>/dev/null ) ]]; then
   log "No existing process found."
 fi
 
@@ -93,7 +102,7 @@ pid="$(cat "$PIDFILE" 2>/dev/null || true)"
 log "Started PID: ${pid:-NONE}"
 
 log "Process check:"
-ps -ef | grep -E "python3\.11 .*zdm-microservices/main\.py" | grep -v grep || true
+ps -ef | grep -E "${PY_CMD_BASENAME} .*zdm-microservices/main\.py" | grep -v grep || true
 
 log "Last 80 lines of microservice.log:"
 tail -n 80 "$LOGFILE" || true

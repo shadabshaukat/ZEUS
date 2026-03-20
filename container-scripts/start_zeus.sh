@@ -76,11 +76,38 @@ if [[ ! -f "$cert_path" || ! -f "$key_path" ]]; then
 fi
 
 log "Starting ZEUS backend..."
-"$RESTART_MICRO" >> "$ZEUS_LOG/microservice.log" 2>&1 &
-log "Starting ZEUS Streamlit..."
-"$RESTART_UI" >> "$ZEUS_LOG/streamlit.log" 2>&1 &
+if ! "$RESTART_MICRO" >> "$ZEUS_LOG/microservice.log" 2>&1; then
+  log "ERROR: backend start script failed"
+  exit 1
+fi
 
-touch "$ZEUS_LOG/.zeus_finished" || true
+log "Starting ZEUS Streamlit..."
+if ! "$RESTART_UI" >> "$ZEUS_LOG/streamlit.log" 2>&1; then
+  log "ERROR: Streamlit start script failed"
+  exit 1
+fi
+
+check_pid_running() {
+  local pidfile="$1"
+  local name="$2"
+  for _ in {1..10}; do
+    if [[ -s "$pidfile" ]]; then
+      local pid
+      pid=$(cat "$pidfile" 2>/dev/null || true)
+      if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        return 0
+      fi
+    fi
+    sleep 1
+  done
+  log "ERROR: $name did not present a healthy PID after startup (pidfile=$pidfile)"
+  return 1
+}
+
+check_pid_running "$ZEUS_LOG/microservice.pid" "backend"
+check_pid_running "$ZEUS_LOG/streamlit.pid" "streamlit"
+
+echo "healthy $(date '+%Y-%m-%dT%H:%M:%S%z')" > "$ZEUS_LOG/.zeus_finished"
 log "ZEUS startup complete."
 
 # Keep PID1 alive if this is the entrypoint

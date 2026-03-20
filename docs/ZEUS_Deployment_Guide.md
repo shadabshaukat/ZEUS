@@ -7,8 +7,8 @@ ZEUS packages two services:
 - a **Streamlit UI** for operator interaction with common ZDM workflows
 
 This guide focuses on:
-- building the container image with a local ZDM kit zip
-- running the container with the repository scripts
+- building the container image
+- running the container with the repository scripts and supplying a local ZDM kit zip on first run
 - understanding the persisted runtime layout under `/u01/data/zeus`
 - configuring authentication, TLS, ports, and runtime behavior
 - performing basic health checks and operator validation
@@ -19,15 +19,14 @@ A ZEUS deployment is a containerized runtime built and started through the repos
 
 At build time, the image includes:
 - the ZEUS application code from `zdm-microservices/`
-- the local ZDM kit zip staged by `build.sh`
 - the Python dependencies needed by the ZEUS services
 - the container startup scripts used to initialize and run ZEUS
 
-At runtime, `run.sh` starts the `zeus` container with host networking, a persistent `/u01` volume mount, and any host mappings defined in `.hosts`. The container then runs `start_zdm.sh` (installs/starts ZDM) followed by `start_zeus.sh` (initializes ZEUS runtime and starts the services).
+At runtime, `run.sh` starts the `zeus` container with host networking, a persistent `/u01` volume mount, and any host mappings defined in `.hosts`. The container then runs `start_zdm.sh` (installs/starts ZDM) followed by `start_zeus.sh` (initializes ZEUS runtime and starts the services). These scripts now live under `container-scripts/` in the repo and are copied into the container image at build time. Provide `ZDM_KIT_PATH` the first time you run so the installer can unpack the kit into the persistent `/u01` volume; subsequent runs reuse the installed ZDM unless you recreate the volume.
 
 The running container includes these main runtime pieces:
 
-1. **Container startup and runtime scripts**
+1. **Container startup and runtime scripts** (located in `container-scripts/` and copied into the image)
    - `start_zdm.sh` installs ZDM (if needed) and starts `zdmservice`
    - `start_zeus.sh` prepares ZEUS runtime state (env/auth/certs) and starts both services
    - `restart_microservice.sh` starts or restarts the FastAPI backend
@@ -51,8 +50,8 @@ The running container includes these main runtime pieces:
 This repository currently documents a **container deployment** using the scripts at the repository root.
 
 At a high level:
-- `build.sh` builds the image using a **local ZDM kit zip**
-- `run.sh` starts the container with a persistent `/u01` mount
+- `build.sh` builds the image
+- `run.sh` starts the container with a persistent `/u01` mount and consumes a **local ZDM kit zip on first run**
 - `start_zdm.sh` installs/starts the base ZDM service
 - `start_zeus.sh` performs first-run ZEUS runtime initialization and starts backend/UI
 - runtime config, auth, certs, and logs are stored outside the image under `/u01/data/zeus`
@@ -71,31 +70,25 @@ Before building and running ZEUS, make sure the host has:
 
 You do **not** need to manually install Python packages on the host for this container path. Those are handled during image build and container runtime.
 
-## Build input: local ZDM kit zip
+## Runtime input: local ZDM kit zip (first run only)
 
-Before running `build.sh`, set `ZDM_KIT_PATH` to your local ZDM kit zip.
+On the first run, provide `ZDM_KIT_PATH` pointing to your local ZDM kit zip so the container can install ZDM into the persisted `/u01` volume. On subsequent runs, omit it unless you recreate the volume.
 
-Example:
+Example (first run):
 
 ```bash
-export ZDM_KIT_PATH=/path/to/zdm.zip
-./build.sh
+ZDM_KIT_PATH=/path/to/zdm.zip ./run.sh
 ```
 
 Operator-relevant behavior:
-- `build.sh` reads the repository `.env`
-- if `ZDM_KIT_PATH` is set, the kit is copied into the build context as `.local_zdm/zdm.zip`
-- the build fails fast if the local kit is missing
-- the `Dockerfile` expects the copied kit at `/tmp/local_zdm/zdm.zip`
-
-For operators, the main required action is simply: set `ZDM_KIT_PATH` correctly before running `./build.sh`.
+- `run.sh` passes `ZDM_KIT_PATH` into the container and mounts it at `${ZDM_KIT_MOUNT}` for `install_zdm.sh`
+- the kit is not baked into the image; it is only read at runtime during the first install
 
 ## Build and run
 
 ### Build the image
 
 ```bash
-export ZDM_KIT_PATH=/path/to/zdm.zip
 ./build.sh
 ```
 
@@ -107,6 +100,14 @@ What `build.sh` does at a high level:
 
 ### Run the container
 
+First run (installs ZDM into the volume):
+
+```bash
+ZDM_KIT_PATH=/path/to/zdm.zip ./run.sh
+```
+
+Subsequent runs:
+
 ```bash
 ./run.sh
 ```
@@ -115,6 +116,7 @@ What `run.sh` does at a high level:
 - reads host mappings from `.hosts`
 - starts the container using host networking
 - mounts persistent storage at `/u01`
+- passes `ZDM_KIT_PATH` into the container for first-time ZDM install
 - restarts the container automatically
 - starts the container under the name `zeus`
 
@@ -122,6 +124,11 @@ Current run characteristics:
 - `--network host`
 - `--restart=always`
 - `-v zdm_volume:/u01:Z`
+
+### Systemd user service
+- `run.sh` invokes `install-service.sh`, which writes a user-level unit `zeus.service` pointing to `_run_container.sh`.
+- The script reloads systemd user units, enables the service, and starts it; subsequent boots will auto-start ZEUS for that user.
+- Manage with `systemctl --user status|start|stop zeus.service`; `podman logs` and `${ZEUS_BASE}/log` hold runtime output.
 
 ## Runtime layout and persisted state
 
