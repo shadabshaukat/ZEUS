@@ -71,7 +71,12 @@ if [[ ! -f "$MAIN_PY" ]]; then
 fi
 
 log "Stopping existing microservice (if any)..."
-if [[ -f "$PIDFILE" ]] && pid=$(cat "$PIDFILE" 2>/dev/null) && kill -0 "$pid" 2>/dev/null; then
+
+pid=""
+pidfile_running=false
+
+if [[ -f "$PIDFILE" ]] && pid=$(cat "$PIDFILE" 2>/dev/null) && [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+  pidfile_running=true
   log "Stopping pid from pidfile: $pid"
   kill "$pid" || true
   sleep 1
@@ -82,6 +87,7 @@ if [[ -n "$pattern_pids" ]]; then
   log "Killing matching pids: $pattern_pids"
   kill $pattern_pids || true
   sleep 1
+
   still="$(pgrep -f "${PY_CMD_BASENAME} .*zdm-microservices/main\.py" || true)"
   if [[ -n "$still" ]]; then
     log "Still running, force killing: $still"
@@ -89,13 +95,17 @@ if [[ -n "$pattern_pids" ]]; then
   fi
 fi
 
-if [[ -z "$pattern_pids" && ! ( -f "$PIDFILE" && kill -0 "${pid:-0}" 2>/dev/null ) ]]; then
+if [[ -z "$pattern_pids" && "$pidfile_running" == false ]]; then
   log "No existing process found."
 fi
 
 log "Starting microservice..."
 # Fully detach: nohup + </dev/null + &
-( cd "$APP_DIR" && nohup "$PYTHON_BIN" "$MAIN_PY" >>"$LOGFILE" 2>&1 < /dev/null & echo $! > "$PIDFILE" )
+(
+  cd "$APP_DIR"
+  nohup "$PYTHON_BIN" "$MAIN_PY" >>"$LOGFILE" 2>&1 < /dev/null &
+  echo $! > "$PIDFILE"
+)
 
 sleep 2
 pid="$(cat "$PIDFILE" 2>/dev/null || true)"

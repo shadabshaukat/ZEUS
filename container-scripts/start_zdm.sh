@@ -22,6 +22,11 @@ if [[ ! -x "$ZDM_SERVICE_BIN" ]]; then
   exit 1
 fi
 
+if "$ZDM_SERVICE_BIN" status >> "$LOG_FILE" 2>&1; then
+  log "ZDM service already running; skipping start"
+  exit 0
+fi
+
 log "Starting ZDM service"
 "$ZDM_SERVICE_BIN" start >> "$LOG_FILE" 2>&1
 
