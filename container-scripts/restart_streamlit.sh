@@ -28,13 +28,15 @@ LOGDIR="${ZEUS_LOG:-$ZEUS_BASE/log}"
 LOGFILE="$LOGDIR/streamlit.log"
 PIDFILE="$LOGDIR/streamlit.pid"
 
-PORT="${STREAMLIT_PORT:?STREAMLIT_PORT must be set}"
+PORT="${STREAMLIT_PORT:?STREAMLIT_PORT must be set (from zeus.env)}"
 CERT_DEFAULT="${ZEUS_CERT_DIR:-${ZEUS_BASE}/certs}/zeus.crt"
 KEY_DEFAULT="${ZEUS_CERT_DIR:-${ZEUS_BASE}/certs}/zeus.key"
 CERT="${STREAMLIT_SSL_CERT:-$CERT_DEFAULT}"
 KEY="${STREAMLIT_SSL_KEY:-$KEY_DEFAULT}"
 PROTO="https"
 API_BASE_URL="${API_BASE_URL:-https://localhost:${ZEUS_PORT}}"
+PYTHON_BIN="${PYTHON_BIN:-python3.11}"
+PY_CMD_BASENAME="$(basename "$PYTHON_BIN")"
 
 mkdir -p "$LOGDIR"
 mkdir -p "$(dirname "$CERT")"
@@ -66,27 +68,26 @@ if [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE")" >/dev/null 2>&1; then
   sleep 1
 fi
 
-# fallback kill by pattern
-pids="$(pgrep -f "streamlit run .*streamlit_app\.py" || true)"
+# fallback kill by pattern (only processes running streamlit_app.py with our python)
+pids="$(pgrep -f "${PY_CMD_BASENAME} .*streamlit_app\.py" || true)"
 if [[ -n "$pids" ]]; then
   log "Killing leftover pids: $pids"
   kill $pids || true
   sleep 1
 fi
 
-# free port if something else is listening
+# free port if we left a stale Streamlit pid on it; bail if something else owns it
 if command -v ss >/dev/null 2>&1; then
   pids_on_port="$(ss -ltnp | awk -v p=":$PORT" '$4 ~ p {print $NF}' | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' | sort -u)"
   if [[ -n "$pids_on_port" ]]; then
-    log "Port $PORT occupied by pid(s): $pids_on_port; killing..."
-    kill $pids_on_port || true
-    sleep 1
-    # double-check and force kill if still present
-    pids_on_port="$(ss -ltnp | awk -v p=":$PORT" '$4 ~ p {print $NF}' | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' | sort -u)"
-    if [[ -n "$pids_on_port" ]]; then
-      log "Port $PORT still busy after kill; forcing kill -9: $pids_on_port"
-      kill -9 $pids_on_port || true
+    ours_on_port="$(printf '%s\n' "$pids_on_port" | xargs -r -n1 sh -c 'ps -p "$0" -o cmd= | grep -Eq "${PY_CMD_BASENAME} .*streamlit_app\.py" && echo "$0"' || true)"
+    if [[ -n "$ours_on_port" ]]; then
+      log "Port $PORT occupied by previous Streamlit pid(s): $ours_on_port; killing..."
+      kill $ours_on_port || true
       sleep 1
+    else
+      log "Port $PORT is used by another process (pids=$pids_on_port); refusing to kill."
+      exit 1
     fi
   fi
 fi
@@ -97,7 +98,7 @@ SSL_ARGS="--server.sslCertFile $CERT --server.sslKeyFile $KEY"
 log "Starting streamlit..."
 export REQUESTS_CA_BUNDLE="$CERT"
 export API_BASE_URL
-nohup python3.11 -m streamlit run "$APP" \
+nohup "$PYTHON_BIN" -m streamlit run "$APP" \
   --server.address 0.0.0.0 \
   --server.port "$PORT" \
   --server.headless true \

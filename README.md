@@ -49,14 +49,15 @@ This repository uses a simple operator-first layout:
 
 ```text
 .
-├── build.sh                     # build the ZEUS container image from local repo files and ZDM kit
+├── build.sh                     # build the ZEUS container image
 ├── Dockerfile                   # container image definition for ZEUS runtime
 ├── README.md
 ├── run.sh                       # run the ZEUS container with persistent /u01 storage
-├── restart_microservice.sh      # restart ZEUS FastAPI backend (uses runtime env)
-├── restart_streamlit.sh         # restart ZEUS Streamlit UI (uses runtime env)
-├── start_zdm.sh                 # install/start ZDM service
-├── start_zeus.sh                # start ZEUS backend/UI
+├── container-scripts/           # runtime scripts copied into the container
+│   ├── restart_microservice.sh  # restart ZEUS FastAPI backend (uses runtime env)
+│   ├── restart_streamlit.sh     # restart ZEUS Streamlit UI (uses runtime env)
+│   ├── start_zdm.sh             # install/start ZDM service
+│   └── start_zeus.sh            # start ZEUS backend/UI
 ├── docs/
 │   ├── ZEUS_API_Reference.md
 │   └── ZEUS_Deployment_Guide.md
@@ -75,7 +76,7 @@ This repository uses a simple operator-first layout:
 
 ## Quick start (container)
 
-This repository is documented for a **container deployment path with a local ZDM kit**.
+This repository is documented for a **container deployment path with a local ZDM kit mounted at runtime**.
 
 Note: Ensure `podman` is installed and executable by the user 
 
@@ -83,15 +84,7 @@ Note: Ensure `podman` is installed and executable by the user
 
 Download the ZDM installation archive from the official source and store it locally. Make note of the file path because it is used in the next step.
 
-### 2) Set your local ZDM kit zip path
-
-Before running `build.sh`, set `ZDM_KIT_PATH` to the downloaded ZDM installation file from Step 1.
-
-```bash
-export ZDM_KIT_PATH=/path/to/<zdm_install_file>.zip
-```
-
-### 3) Build the image
+### 2) Build the image
 
 Verify the values in .env and .hosts file and modify if required. When ready, execute the build script.
 
@@ -99,11 +92,24 @@ Verify the values in .env and .hosts file and modify if required. When ready, ex
 ./build.sh
 ```
 
-### 4) Run the container
+### 3) Run the container
+
+Pass the ZDM kit path the first time you run so the installer can unpack it into the persistent `/u01` volume:
+
+```bash
+ZDM_KIT_PATH=/path/to/<zdm_install_file>.zip ./run.sh
+```
+
+Subsequent runs can just call:
 
 ```bash
 ./run.sh
 ```
+
+### 4) Systemd user service (maintenance)
+- `run.sh` invokes `install-service.sh`, which installs/updates the user-level unit `zeus.service` pointing to `_run_container.sh`.
+- systemd is reloaded and the service is enabled/started automatically.
+- Manage with `systemctl --user status|start|stop zeus.service`; logs are available via `podman logs` and `${ZEUS_BASE}/log`.
 
 ### 5) Verify services
 
